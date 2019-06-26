@@ -16,6 +16,7 @@ from functools import partial
 
 import apache_beam as beam
 import tensorflow as tf
+import zstandard as zstd
 from apache_beam import pvalue
 from apache_beam.io import BigQuerySource, Read
 from apache_beam.io.textio import WriteToText
@@ -27,7 +28,12 @@ _JSON_FORMAT = "JSON"
 
 
 def _parse_args(argv=None):
-    """Parse command line arguments."""
+    """Parse command line arguments.
+
+    Returns the namespace of defined arguments and a list of string of the
+    other arguments that can be fed to a different parser (e.g. Apache
+    Beam's parser).
+    """
 
     def _positive_int(value):
         """Define a positive integer ArgumentParser type."""
@@ -56,6 +62,19 @@ def _parse_args(argv=None):
         help="The dataset format to write. 'TF' for serialized tensorflow "
              "examples in TFRecords. 'JSON' for text files with one JSON "
              "object per line."
+    )
+    parser.add_argument(
+        "--json-compress",
+        default=False,
+        action="store_true",
+        help="If the flag is used the dataset will be compressed using "
+             "zstandard"
+    )
+    parser.add_argument(
+        "--json-compress-dictionary",
+        type=str,
+        help="Path to a zstandard compression dictionary, will improve "
+             "performances significantly."
     )
     parser.add_argument(
         "--parent_depth",
@@ -108,6 +127,16 @@ Comment = namedtuple(
         "subreddit",
     ]
 )
+
+
+class Compressor:
+    def __init__(self, dictionary=None):
+        self.engine = zstd.ZstdCompressor(dict_data=dictionary)
+        self.compress = self.engine.compress
+
+    def serializer(self, data):
+        serialized = json.dumps(data).encode()
+        return self.compress(serialized)
 
 
 def normalise_comment(comment, max_length):
@@ -317,7 +346,21 @@ def run(argv=None, comments=None):
     if args.dataset_format == _JSON_FORMAT:
         write_sink = WriteToText
         file_name_suffix = ".json"
-        serialize_fn = json.dumps
+
+        if args.json_compress:
+            dictionary = None
+            if args.json_compress_dictionary is not None:
+                with open(args.json_compress_dictionary) as fi:
+                    dictionary = zstd.ZstdCompressionDict(fi.read())
+
+            compressor = Compressor(dictionary)
+            # TODO: This compression scheme is unlikely to be the best one
+            #  as we're going to have the compression header repeated on each
+            #  line, as opposed to having the compressor be aware it
+            #  compresses for a single file.
+            serialize_fn = compressor.serializer
+        else:
+            serialize_fn = json.dumps
     else:
         assert args.dataset_format == _TF_FORMAT
         write_sink = WriteToTFRecord
