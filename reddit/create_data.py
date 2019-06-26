@@ -131,7 +131,11 @@ Comment = namedtuple(
 
 class Compressor:
     def __init__(self, dictionary=None):
-        self.engine = zstd.ZstdCompressor(dict_data=dictionary)
+        # XXX: ZstdCompressor is weird and doesn't accept null dictionary
+        if dictionary is not None:
+            self.engine = zstd.ZstdCompressor(dict_data=dictionary)
+        else:
+            self.engine = zstd.ZstdCompressor()
         self.compress = self.engine.compress
 
     def serializer(self, data):
@@ -348,12 +352,12 @@ def run(argv=None, comments=None):
         file_name_suffix = ".json"
 
         if args.json_compress:
-            dictionary = None
             if args.json_compress_dictionary is not None:
                 with open(args.json_compress_dictionary) as fi:
                     dictionary = zstd.ZstdCompressionDict(fi.read())
-
-            compressor = Compressor(dictionary)
+                compressor = Compressor(dictionary)
+            else:
+                compressor = Compressor()
             # TODO: This compression scheme is unlikely to be the best one
             #  as we're going to have the compression header repeated on each
             #  line, as opposed to having the compressor be aware it

@@ -22,9 +22,10 @@ DATADIR="gs://${BUCKET?}/reddit/$(date +"%Y%m%d")"
 python reddit/create_data.py \
   --output_dir ${DATADIR?} \
   --reddit_table ${PROJECT?}:${DATASET?}.${TABLE?} \
+  --dataset_format JSON \
+  --json-compress \
   --runner DataflowRunner \
   --temp_location ${DATADIR?}/temp \
   --staging_location ${DATADIR?}/staging \
   --project ${PROJECT?} \
-  --setup_file ${PWD}/setup.py \
-  --dataset_format TF
+  --setup_file ${PWD}/setup.py
