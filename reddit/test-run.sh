@@ -23,6 +23,8 @@ python reddit/create_data.py \
   --output_dir ${DATADIR?} \
   --reddit_table ${PROJECT?}:${DATASET?}.${TABLE?} \
   --dataset_format JSON \
+  --num_shards_train 10 \
+  --num_shards_test 5 \
   --json-compress \
   --runner DataflowRunner \
   --temp_location ${DATADIR?}/temp \

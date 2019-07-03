@@ -348,23 +348,9 @@ def run(argv=None, comments=None):
     ).with_outputs(_TrainTestSplitFn.TEST_TAG, _TrainTestSplitFn.TRAIN_TAG)
 
     if args.dataset_format == _JSON_FORMAT:
-        write_sink = WriteToText
+        write_sink = WriteToText(compression_type="uncompressed")
         file_name_suffix = ".json"
-
-        if args.json_compress:
-            if args.json_compress_dictionary is not None:
-                with open(args.json_compress_dictionary) as fi:
-                    dictionary = zstd.ZstdCompressionDict(fi.read())
-                compressor = Compressor(dictionary)
-            else:
-                compressor = Compressor()
-            # TODO: This compression scheme is unlikely to be the best one
-            #  as we're going to have the compression header repeated on each
-            #  line, as opposed to having the compressor be aware it
-            #  compresses for a single file.
-            serialize_fn = compressor.serializer
-        else:
-            serialize_fn = json.dumps
+        serialize_fn = json.dumps
     else:
         assert args.dataset_format == _TF_FORMAT
         write_sink = WriteToTFRecord
@@ -384,6 +370,20 @@ def run(argv=None, comments=None):
                 num_shards=args.num_shards_train,
             )
         )
+
+        if args.dataset_format == _JSON_FORMAT and args.json_compress:
+            if args.json_compress_dictionary is not None:
+                with open(args.json_compress_dictionary) as fi:
+                    dictionary = zstd.ZstdCompressionDict(fi.read())
+                compressor = Compressor(dictionary)
+            else:
+                compressor = Compressor()
+            # TODO: This compression scheme is unlikely to be the best one
+            #  as we're going to have the compression header repeated on each
+            #  line, as opposed to having the compressor be aware it
+            #  compresses for a single file.
+            serialize_fn = compressor.serializer
+            serialized_examples | ("Compressing " + name) >> beam.Map(serialize_fn)
 
     result = p.run()
     result.wait_until_finish()
